@@ -25,16 +25,43 @@ class CatRentalRequest < ApplicationRecord
     CatRentalRequest
       .where.not(id: self.id)
       .where(cat_id: cat_id)
-      .where.not('start_date > end_date OR end_date < start_date')
+      .where.not('start_date > :end_date OR end_date < :start_date',
+                 start_date: start_date, end_date: end_date)
   end
 
   def overlapping_approved_requests
     overlapping_requests.where('status = \'APPROVED\'')
   end
 
+  def overlapping_pending_requests
+    overlapping_requests.where('status = \'PENDING\'')
+  end
+
   def does_not_overlap_approved_requests
     if !overlapping_approved_requests.empty?
       errors[:base] << 'This cat is not available on the selected dates.'
     end
+  end
+
+  def approve!
+    ActiveRecord::Base.transaction do
+      self.status = 'APPROVED'
+      self.save!
+
+      overlapping_requests.each do |rental_request|
+        rental_request.deny!
+      end
+    end
+  end
+
+  def deny!
+    self.status = 'DENIED'
+    self.save!
+  end
+
+  def self.reset_requests!
+      CatRentalRequest.all.each do |rental_request|
+        rental_request.update!(status: 'PENDING')
+      end
   end
 end
